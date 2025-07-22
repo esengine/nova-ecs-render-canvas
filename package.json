@@ -1,6 +1,6 @@
 {
   "name": "@esengine/nova-ecs-render-canvas",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Canvas 2D rendering implementation for NovaECS render core",
   "keywords": [
     "ecs",
