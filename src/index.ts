@@ -10,6 +10,7 @@
 
 export { CanvasRenderer } from './CanvasRenderer';
 export { CanvasDebugRenderer } from './CanvasDebugRenderer';
+export { CanvasPhysicsDebugRenderer } from './CanvasPhysicsDebugRenderer';
 
 // ===== Types and Interfaces =====
 // 类型和接口

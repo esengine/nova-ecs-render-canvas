@@ -117,6 +117,43 @@ debugRenderer.drawPerformanceStats({
 debugRenderer.endFrame();
 ```
 
+### Physics Debug Rendering | 物理调试渲染
+
+```typescript
+import { CanvasPhysicsDebugRenderer } from '@esengine/nova-ecs-render-canvas';
+
+const physicsDebugRenderer = new CanvasPhysicsDebugRenderer(canvas, {
+  pixelsPerUnit: 100,
+  showUI: true
+});
+
+// Configure physics debug settings
+physicsDebugRenderer.setPhysicsDebugConfig({
+  showBodies: true,
+  showShapes: true,
+  showJoints: true,
+  showContacts: true,
+  showAABBs: true,
+  showCenterOfMass: true,
+  showVelocities: true,
+  showForces: true
+});
+
+physicsDebugRenderer.beginFrame();
+physicsDebugRenderer.clear({ r: 0.05, g: 0.05, b: 0.1, a: 1.0 });
+
+// Draw physics bodies
+physicsDebugRenderer.drawBox(position, size, rotation, isDynamic);
+physicsDebugRenderer.drawCircle(position, radius, isDynamic);
+
+// Draw physics debug info
+physicsDebugRenderer.drawCenterOfMass(position);
+physicsDebugRenderer.drawVelocity(position, velocity);
+physicsDebugRenderer.drawContactPoint(contactInfo);
+
+physicsDebugRenderer.endFrame();
+```
+
 ### Configuration | 配置
 
 ```typescript
@@ -206,6 +243,32 @@ Debug renderer with additional debugging features.
 - `drawAxis(origin, scale)`: Draw coordinate axes
 - `drawPerformanceStats(stats)`: Draw performance overlay
 - `takeScreenshot()`: Capture canvas as image
+
+### CanvasPhysicsDebugRenderer
+
+Specialized physics debug renderer for visualizing physics simulation data.
+
+#### Key Features
+
+- Physics body visualization (static, kinematic, dynamic)
+- Shape rendering with different styles
+- Joint and constraint visualization
+- Contact point and normal display
+- Velocity and force vector rendering
+- AABB (Axis-Aligned Bounding Box) display
+- Center of mass indicators
+- Transform visualization
+
+#### Physics Debug Methods
+
+- `drawBox(position, size, rotation, isDynamic)`: Draw physics box
+- `drawCircle(position, radius, isDynamic)`: Draw physics circle
+- `drawCenterOfMass(position)`: Draw center of mass marker
+- `drawVelocity(position, velocity)`: Draw velocity vector
+- `drawContactPoint(contactInfo)`: Draw contact point with normal
+- `drawBodyAABB(min, max)`: Draw axis-aligned bounding box
+- `drawJointAnchors(anchor1, anchor2)`: Draw joint connection
+- `drawPhysicsStats(stats)`: Draw physics simulation statistics
 
 ### Utilities | 工具类
 
