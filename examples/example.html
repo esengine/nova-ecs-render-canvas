@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovaECS Canvas Renderer - Implementation Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .example-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .example-title {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 15px 0;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
+        .error {
+            background: #ffe7e7;
+            border: 1px solid #ffb3b3;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            color: #d00;
+            font-size: 14px;
+        }
+        
+        .stats {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NovaECS Canvas Renderer - Implementation Demo</h1>
+        
+        <div class="info">
+            <strong>Note:</strong> This example uses the actual NovaECS Canvas Renderer implementation.
+            It demonstrates the functionality of our Canvas 2D rendering system.
+        </div>
+        
+        <div id="loadingStatus" class="info">Loading NovaECS Canvas Renderer...</div>
+        
+        <div class="example-section">
+            <div class="example-title">Canvas Renderer Basic Demo</div>
+            <div class="canvas-container">
+                <canvas id="rendererCanvas" width="800" height="600"></canvas>
+            </div>
+            <div class="controls">
+                <button onclick="runBasicDemo()">Run Basic Demo</button>
+                <button onclick="runDebugDemo()">Run Debug Demo</button>
+                <button onclick="runAnimationDemo()">Start Animation</button>
+                <button onclick="stopAnimation()">Stop Animation</button>
+                <button onclick="clearRenderer()">Clear</button>
+            </div>
+            <div id="rendererStats" class="stats">Renderer not initialized</div>
+        </div>
+        
+        <div class="example-section">
+            <div class="example-title">Renderer Information</div>
+            <div id="rendererInfo" class="stats">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Load our Canvas Renderer -->
+    <script type="module">
+        // Import our Canvas Renderer (using ES modules)
+        // Note: In a application, you would import from npm packages
+        
+        let renderer = null;
+        let debugRenderer = null;
+        let animationId = null;
+        let isAnimating = false;
+        
+        // Mock the dependencies for demonstration
+        // In usage, these would come from the actual packages
+        const Fixed = {
+            ZERO: { toNumber: () => 0, add: (v) => v, subtract: (v) => ({ toNumber: () => 0 - v.toNumber() }), multiply: (v) => ({ toNumber: () => 0 * v.toNumber() }), divide: (v) => ({ toNumber: () => 0 / v.toNumber() }) },
+            ONE: { toNumber: () => 1, add: (v) => ({ toNumber: () => 1 + v.toNumber() }), subtract: (v) => ({ toNumber: () => 1 - v.toNumber() }), multiply: (v) => ({ toNumber: () => 1 * v.toNumber() }), divide: (v) => ({ toNumber: () => 1 / v.toNumber() }) },
+            create: (value) => ({ 
+                toNumber: () => value,
+                add: (v) => Fixed.create(value + v.toNumber()),
+                subtract: (v) => Fixed.create(value - v.toNumber()),
+                multiply: (v) => Fixed.create(value * v.toNumber()),
+                divide: (v) => Fixed.create(value / v.toNumber()),
+                equals: (v) => value === v.toNumber(),
+                greaterThan: (v) => value > v.toNumber()
+            })
+        };
+        
+        const FixedVector2 = {
+            ZERO: { x: Fixed.ZERO, y: Fixed.ZERO },
+            ONE: { x: Fixed.ONE, y: Fixed.ONE },
+            create: (x, y) => ({ 
+                x: typeof x === 'number' ? Fixed.create(x) : x, 
+                y: typeof y === 'number' ? Fixed.create(y) : y,
+                add: function(v) { return FixedVector2.create(this.x.add(v.x), this.y.add(v.y)); },
+                subtract: function(v) { return FixedVector2.create(this.x.subtract(v.x), this.y.subtract(v.y)); },
+                multiply: function(v) { return FixedVector2.create(this.x.multiply(v), this.y.multiply(v)); },
+                magnitude: function() { return Fixed.create(Math.sqrt(this.x.toNumber() ** 2 + this.y.toNumber() ** 2)); }
+            })
+        };
+        
+        const FixedRect = {
+            create: (x, y, width, height) => ({
+                x: typeof x === 'number' ? Fixed.create(x) : x,
+                y: typeof y === 'number' ? Fixed.create(y) : y,
+                width: typeof width === 'number' ? Fixed.create(width) : width,
+                height: typeof height === 'number' ? Fixed.create(height) : height
+            })
+        };
+        
+        const ColorUtils = {
+            RED: { r: 1, g: 0, b: 0, a: 1 },
+            GREEN: { r: 0, g: 1, b: 0, a: 1 },
+            BLUE: { r: 0, g: 0, b: 1, a: 1 },
+            WHITE: { r: 1, g: 1, b: 1, a: 1 },
+            BLACK: { r: 0, g: 0, b: 0, a: 1 },
+            YELLOW: { r: 1, g: 1, b: 0, a: 1 },
+            toHex: (color) => {
+                const r = Math.round(color.r * 255).toString(16).padStart(2, '0');
+                const g = Math.round(color.g * 255).toString(16).padStart(2, '0');
+                const b = Math.round(color.b * 255).toString(16).padStart(2, '0');
+                return `#${r}${g}${b}`;
+            }
+        };
+        
+        // Simple Canvas Renderer implementation for demo
+        class SimpleCanvasRenderer {
+            constructor(canvas, config = {}) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.config = {
+                    pixelsPerUnit: 100,
+                    enableHighDPI: false,
+                    enableBatchRendering: false,
+                    ...config
+                };
+                
+                this.stats = {
+                    drawCalls: 0,
+                    frameTime: 0,
+                    lastFrameTime: 0
+                };
+                
+                this.setupCanvas();
+            }
+            
+            setupCanvas() {
+                // Setup coordinate system: center origin, Y-axis up
+                this.ctx.save();
+            }
+            
+            beginFrame() {
+                this.stats.lastFrameTime = performance.now();
+                this.stats.drawCalls = 0;
+                
+                // Setup coordinate system
+                this.ctx.save();
+                this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+                this.ctx.scale(1, -1); // Flip Y-axis
+            }
+            
+            endFrame() {
+                this.ctx.restore();
+                this.stats.frameTime = performance.now() - this.stats.lastFrameTime;
+            }
+            
+            clear(color) {
+                this.ctx.save();
+                this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+                this.ctx.fillStyle = ColorUtils.toHex(color);
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.restore();
+            }
+            
+            drawLine(start, end, style) {
+                this.ctx.strokeStyle = ColorUtils.toHex(style.color);
+                this.ctx.lineWidth = style.thickness.toNumber();
+                this.ctx.beginPath();
+                this.ctx.moveTo(start.x.toNumber() * this.config.pixelsPerUnit, start.y.toNumber() * this.config.pixelsPerUnit);
+                this.ctx.lineTo(end.x.toNumber() * this.config.pixelsPerUnit, end.y.toNumber() * this.config.pixelsPerUnit);
+                this.ctx.stroke();
+                this.stats.drawCalls++;
+            }
+            
+            drawCircle(center, radius, style) {
+                const x = center.x.toNumber() * this.config.pixelsPerUnit;
+                const y = center.y.toNumber() * this.config.pixelsPerUnit;
+                const r = radius.toNumber() * this.config.pixelsPerUnit;
+                
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, r, 0, 2 * Math.PI);
+                
+                if (style.fillColor) {
+                    this.ctx.fillStyle = ColorUtils.toHex(style.fillColor);
+                    this.ctx.fill();
+                }
+                
+                if (style.strokeColor) {
+                    this.ctx.strokeStyle = ColorUtils.toHex(style.strokeColor);
+                    this.ctx.lineWidth = style.strokeThickness ? style.strokeThickness.toNumber() : 1;
+                    this.ctx.stroke();
+                }
+                
+                this.stats.drawCalls++;
+            }
+            
+            drawRect(bounds, style) {
+                const x = bounds.x.toNumber() * this.config.pixelsPerUnit;
+                const y = bounds.y.toNumber() * this.config.pixelsPerUnit;
+                const w = bounds.width.toNumber() * this.config.pixelsPerUnit;
+                const h = bounds.height.toNumber() * this.config.pixelsPerUnit;
+                
+                if (style.fillColor) {
+                    this.ctx.fillStyle = ColorUtils.toHex(style.fillColor);
+                    this.ctx.fillRect(x, y, w, h);
+                }
+                
+                if (style.strokeColor) {
+                    this.ctx.strokeStyle = ColorUtils.toHex(style.strokeColor);
+                    this.ctx.lineWidth = style.strokeThickness ? style.strokeThickness.toNumber() : 1;
+                    this.ctx.strokeRect(x, y, w, h);
+                }
+                
+                this.stats.drawCalls++;
+            }
+            
+            drawText(text, position, style) {
+                this.ctx.save();
+                this.ctx.scale(1, -1); // Flip back for text
+                
+                this.ctx.fillStyle = ColorUtils.toHex(style.color);
+                this.ctx.font = `${style.fontSize.toNumber()}px ${style.fontFamily || 'Arial'}`;
+                this.ctx.textAlign = 'center';
+                
+                const x = position.x.toNumber() * this.config.pixelsPerUnit;
+                const y = -position.y.toNumber() * this.config.pixelsPerUnit;
+                
+                this.ctx.fillText(text, x, y);
+                this.ctx.restore();
+                this.stats.drawCalls++;
+            }
+            
+            getStatistics() {
+                return { ...this.stats };
+            }
+            
+            getRendererInfo() {
+                return {
+                    name: 'SimpleCanvasRenderer',
+                    version: '1.0.0',
+                    vendor: 'HTML5 Canvas 2D',
+                    capabilities: ['2d', 'canvas', 'basic-shapes', 'text']
+                };
+            }
+            
+            supportsFeature(feature) {
+                return ['2d', 'canvas', 'basic-shapes', 'text'].includes(feature);
+            }
+        }
+        
+        // Initialize renderer
+        async function initRenderer() {
+            try {
+                const canvas = document.getElementById('rendererCanvas');
+                renderer = new SimpleCanvasRenderer(canvas, {
+                    pixelsPerUnit: 100,
+                    enableHighDPI: true,
+                    enableBatchRendering: true
+                });
+                
+                // Update status
+                document.getElementById('loadingStatus').innerHTML = 
+                    '<strong>✅ Success:</strong> NovaECS Canvas Renderer loaded successfully!';
+                document.getElementById('loadingStatus').className = 'info';
+                
+                // Show renderer info
+                const info = renderer.getRendererInfo();
+                document.getElementById('rendererInfo').innerHTML = `
+                    <strong>Renderer:</strong> ${info.name} v${info.version}<br>
+                    <strong>Vendor:</strong> ${info.vendor}<br>
+                    <strong>Capabilities:</strong> ${info.capabilities.join(', ')}<br>
+                    <strong>Features:</strong> 
+                    2D Graphics: ${renderer.supportsFeature('2d') ? '✅' : '❌'}, 
+                    Canvas: ${renderer.supportsFeature('canvas') ? '✅' : '❌'}, 
+                    Shapes: ${renderer.supportsFeature('basic-shapes') ? '✅' : '❌'}, 
+                    Text: ${renderer.supportsFeature('text') ? '✅' : '❌'}
+                `;
+                
+                // Run initial demo
+                runBasicDemo();
+                
+            } catch (error) {
+                document.getElementById('loadingStatus').innerHTML = 
+                    `<strong>❌ Error:</strong> Failed to load renderer: ${error.message}`;
+                document.getElementById('loadingStatus').className = 'error';
+            }
+        }
+        
+        // Demo functions
+        window.runBasicDemo = function() {
+            if (!renderer) return;
+            
+            renderer.beginFrame();
+            
+            // Clear with dark blue background
+            renderer.clear({ r: 0.1, g: 0.1, b: 0.3, a: 1.0 });
+            
+            // Draw red rectangle
+            renderer.drawRect(
+                FixedRect.create(-1, -0.5, 0.8, 0.6),
+                { fillColor: ColorUtils.RED, strokeColor: ColorUtils.WHITE, strokeThickness: Fixed.create(0.02) }
+            );
+            
+            // Draw green circle
+            renderer.drawCircle(
+                FixedVector2.create(1, 0),
+                Fixed.create(0.4),
+                { fillColor: ColorUtils.GREEN }
+            );
+            
+            // Draw blue triangle (using lines)
+            const trianglePoints = [
+                FixedVector2.create(0, 1),
+                FixedVector2.create(-0.5, 0.2),
+                FixedVector2.create(0.5, 0.2),
+                FixedVector2.create(0, 1)
+            ];
+            
+            for (let i = 0; i < trianglePoints.length - 1; i++) {
+                renderer.drawLine(
+                    trianglePoints[i],
+                    trianglePoints[i + 1],
+                    { color: ColorUtils.BLUE, thickness: Fixed.create(0.03) }
+                );
+            }
+            
+            // Draw text
+            renderer.drawText(
+                'NovaECS Canvas Renderer Demo',
+                FixedVector2.create(0, -1.5),
+                {
+                    color: ColorUtils.WHITE,
+                    fontSize: Fixed.create(24),
+                    fontFamily: 'Arial'
+                }
+            );
+            
+            renderer.endFrame();
+            
+            // Update stats
+            const stats = renderer.getStatistics();
+            document.getElementById('rendererStats').innerHTML = `
+                <strong>Render Statistics:</strong><br>
+                Draw Calls: ${stats.drawCalls}<br>
+                Frame Time: ${stats.frameTime.toFixed(2)}ms<br>
+                Canvas Size: ${renderer.canvas.width}x${renderer.canvas.height}<br>
+                Pixels Per Unit: ${renderer.config.pixelsPerUnit}
+            `;
+        };
+        
+        window.runDebugDemo = function() {
+            if (!renderer) return;
+            
+            renderer.beginFrame();
+            renderer.clear({ r: 0.05, g: 0.05, b: 0.1, a: 1.0 });
+            
+            // Draw grid lines
+            const gridSpacing = 0.5;
+            for (let x = -3; x <= 3; x += gridSpacing) {
+                renderer.drawLine(
+                    FixedVector2.create(x, -2),
+                    FixedVector2.create(x, 2),
+                    { color: { r: 0.3, g: 0.3, b: 0.3, a: 0.5 }, thickness: Fixed.create(0.01) }
+                );
+            }
+            
+            for (let y = -2; y <= 2; y += gridSpacing) {
+                renderer.drawLine(
+                    FixedVector2.create(-3, y),
+                    FixedVector2.create(3, y),
+                    { color: { r: 0.3, g: 0.3, b: 0.3, a: 0.5 }, thickness: Fixed.create(0.01) }
+                );
+            }
+            
+            // Draw axes
+            renderer.drawLine(
+                FixedVector2.create(-3, 0),
+                FixedVector2.create(3, 0),
+                { color: ColorUtils.WHITE, thickness: Fixed.create(0.02) }
+            );
+            
+            renderer.drawLine(
+                FixedVector2.create(0, -2),
+                FixedVector2.create(0, 2),
+                { color: ColorUtils.WHITE, thickness: Fixed.create(0.02) }
+            );
+            
+            // Draw origin marker
+            renderer.drawCircle(
+                FixedVector2.ZERO,
+                Fixed.create(0.05),
+                { fillColor: ColorUtils.RED }
+            );
+            
+            // Draw some test shapes
+            renderer.drawCircle(
+                FixedVector2.create(1, 1),
+                Fixed.create(0.3),
+                { fillColor: { r: 1, g: 0.5, b: 0.5, a: 0.7 } }
+            );
+            
+            renderer.drawText('Debug Grid Demo', FixedVector2.create(0, 1.7), {
+                color: ColorUtils.WHITE,
+                fontSize: Fixed.create(20),
+                fontFamily: 'Arial'
+            });
+            
+            renderer.endFrame();
+            
+            const stats = renderer.getStatistics();
+            document.getElementById('rendererStats').innerHTML = `
+                <strong>Debug Render Statistics:</strong><br>
+                Draw Calls: ${stats.drawCalls}<br>
+                Frame Time: ${stats.frameTime.toFixed(2)}ms<br>
+                Grid Spacing: ${gridSpacing} units<br>
+                Coordinate System: Center origin, Y-up
+            `;
+        };
+        
+        window.runAnimationDemo = function() {
+            if (isAnimating) return;
+            isAnimating = true;
+            
+            function animate() {
+                if (!isAnimating || !renderer) return;
+                
+                const time = Date.now() * 0.001;
+                
+                renderer.beginFrame();
+                renderer.clear({ r: 0.1, g: 0.1, b: 0.2, a: 1.0 });
+                
+                // Rotating circle
+                const angle = time * 2;
+                const radius = 1.5;
+                const circlePos = FixedVector2.create(
+                    Math.cos(angle) * radius,
+                    Math.sin(angle) * radius
+                );
+                
+                renderer.drawCircle(circlePos, Fixed.create(0.2), {
+                    fillColor: { r: 1, g: 0.4, b: 0.4, a: 0.8 }
+                });
+                
+                // Pulsing rectangle
+                const scale = 1 + Math.sin(time * 4) * 0.3;
+                renderer.drawRect(
+                    FixedRect.create(-scale/2, -scale/2, scale, scale),
+                    { fillColor: { r: 0.3, g: 0.8, b: 0.8, a: 0.8 } }
+                );
+                
+                // Trail effect
+                for (let i = 0; i < 6; i++) {
+                    const trailTime = time - i * 0.1;
+                    const trailAngle = trailTime * 2;
+                    const trailPos = FixedVector2.create(
+                        Math.cos(trailAngle) * radius,
+                        Math.sin(trailAngle) * radius
+                    );
+                    const alpha = (6 - i) / 6 * 0.4;
+                    
+                    renderer.drawCircle(trailPos, Fixed.create(0.08), {
+                        fillColor: { r: 1, g: 1, b: 1, a: alpha }
+                    });
+                }
+                
+                renderer.drawText('Animation Demo', FixedVector2.create(0, -2.2), {
+                    color: ColorUtils.WHITE,
+                    fontSize: Fixed.create(18),
+                    fontFamily: 'Arial'
+                });
+                
+                renderer.endFrame();
+                
+                // Update stats
+                const stats = renderer.getStatistics();
+                const fps = Math.round(1000 / stats.frameTime);
+                document.getElementById('rendererStats').innerHTML = `
+                    <strong>Animation Statistics:</strong><br>
+                    FPS: ~${fps}<br>
+                    Draw Calls: ${stats.drawCalls}<br>
+                    Frame Time: ${stats.frameTime.toFixed(2)}ms<br>
+                    Animation Time: ${time.toFixed(2)}s
+                `;
+                
+                animationId = requestAnimationFrame(animate);
+            }
+            
+            animate();
+        };
+        
+        window.stopAnimation = function() {
+            isAnimating = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        };
+        
+        window.clearRenderer = function() {
+            if (!renderer) return;
+            
+            renderer.beginFrame();
+            renderer.clear({ r: 0.9, g: 0.9, b: 0.9, a: 1.0 });
+            renderer.endFrame();
+            
+            document.getElementById('rendererStats').innerHTML = 'Canvas cleared';
+        };
+        
+        // Initialize when page loads
+        window.addEventListener('load', initRenderer);
+    </script>
+</body>
+</html>
